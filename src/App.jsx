@@ -290,14 +290,24 @@ function App() {
             {loading ? "Loading latest data..." : error ? error : selectedDate ? `Showing data for ${new Date(selectedDate).toLocaleDateString()}` : "No data available"}
           </p>
           {availableDates.length > 0 && (
-            <select id="date-picker" className="bg-gray-700 text-gray-200 rounded px-2 py-1" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} style={{ display: "inline-block" }}>
-              {availableDates.map((date) => (
-                <option key={date} value={date}>
-                  {date}
-                </option>
-              ))}
-            </select>
+            <input
+              id="date-picker"
+              type="date"
+              className="bg-gray-700 text-gray-200 rounded px-2 py-1"
+              value={selectedDate}
+              min={availableDates[0]}
+              max={availableDates[availableDates.length - 1]}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={{ display: "inline-block" }}
+              list="available-dates"
+            />
           )}
+          {/* Optionally, provide a datalist for browser autocomplete of available dates */}
+          <datalist id="available-dates">
+            {availableDates.map((date) => (
+              <option key={date} value={date} />
+            ))}
+          </datalist>
           {loading && totalCount && (
             <div className="w-full max-w-md mt-2">
               <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
