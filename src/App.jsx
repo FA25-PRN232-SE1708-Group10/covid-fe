@@ -2,7 +2,7 @@ import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import "highcharts/modules/map";
 import "highcharts/modules/treemap";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 const API_BASE_URL = "https://localhost:7164"; // Update to your backend's URL
@@ -74,9 +74,14 @@ function normalizeCountryName(name) {
 }
 
 function App() {
+  const [allData, setAllData] = useState([]);
   const [availableDates, setAvailableDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [latestDataByCountry, setLatestDataByCountry] = useState([]);
+  const [progress, setProgress] = useState(0);
+  const [totalCount, setTotalCount] = useState(null);
+  const [fetchedCount, setFetchedCount] = useState(0);
+  const progressRef = useRef(0);
   const [currentMetric, setCurrentMetric] = useState("Confirmed");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,20 +95,51 @@ function App() {
       .catch(() => setWorldMapGeoData(null));
   }, []);
 
-  // Fetch available dates only (distinct dates from backend)
+  // Fetch all data and show progress bar
   useEffect(() => {
-    setLoading(true);
-    setError("");
-    fetch(`${API_BASE_URL}/odata/CovidData?$apply=groupby((Date))`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch available dates");
-        return res.json();
-      })
-      .then((data) => {
-        // OData groupby returns array of objects with Date property
+    let isCancelled = false;
+    async function fetchAllData() {
+      setLoading(true);
+      setError("");
+      setProgress(0);
+      setFetchedCount(0);
+      setTotalCount(null);
+      let all = [];
+      const uniqueMap = new Map();
+      try {
+        // Get total count for progress
+        const countRes = await fetch(`${API_BASE_URL}/odata/CovidData/$count`);
+        if (!countRes.ok) throw new Error("Failed to fetch total count");
+        const total = parseInt(await countRes.text(), 10);
+        setTotalCount(total);
+        let url = `${API_BASE_URL}/odata/CovidData`;
+        while (url) {
+          const response = await fetch(url, {
+            headers: { accept: "application/json;odata.metadata=minimal;odata.streaming=true" },
+          });
+          if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+          const result = await response.json();
+          if (Array.isArray(result.value)) {
+            // Deduplicate by a composite key (CountryRegion+Date+ProvinceState if available)
+            for (const d of result.value) {
+              const key = `${d.CountryRegion || ""}|${d.ProvinceState || ""}|${d.Date}`;
+              if (!uniqueMap.has(key)) {
+                uniqueMap.set(key, d);
+              }
+            }
+            all = Array.from(uniqueMap.values());
+            setFetchedCount(all.length);
+            setProgress(Math.min(100, Math.round((all.length / total) * 100)));
+            progressRef.current = Math.min(100, Math.round((all.length / total) * 100));
+          }
+          url = result["@odata.nextLink"] || result["odata.nextLink"] || null;
+        }
+        if (!Array.isArray(all) || all.length === 0) throw new Error("No data returned from API");
+        setAllData(all);
+        // Setup available dates and select latest
         const dates = Array.from(
           new Set(
-            (data.value || []).map((d) => {
+            all.map((d) => {
               const dateObj = new Date(d.Date);
               const yyyy = dateObj.getFullYear();
               const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
@@ -114,41 +150,36 @@ function App() {
         ).sort((a, b) => a.localeCompare(b));
         setAvailableDates(dates);
         setSelectedDate(dates[dates.length - 1] || "");
-      })
-      .catch(() => setError("Failed to load available dates."))
-      .finally(() => setLoading(false));
+      } catch {
+        if (!isCancelled) setError("Failed to load data. Is the backend running?");
+      } finally {
+        if (!isCancelled) setLoading(false);
+      }
+    }
+    fetchAllData();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
-  // Fetch COVID data for the selected date only
+  // Update dashboard for selected date
   useEffect(() => {
-    if (!selectedDate) return;
-    setLoading(true);
-    setError("");
-    const filter = `Date eq ${selectedDate}`;
-    fetch(`${API_BASE_URL}/odata/CovidData?$filter=${encodeURIComponent(filter)}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch data for selected date");
-        return res.json();
-      })
-      .then((data) => {
-        const records = data.value || [];
-        const countryMap = {};
-        records.forEach((d) => {
-          const c = d.CountryRegion;
-          if (!countryMap[c]) {
-            countryMap[c] = { CountryRegion: c, Confirmed: 0, Deaths: 0, Recovered: 0 };
-          }
-          countryMap[c].Confirmed += Number(d.Confirmed) || 0;
-          countryMap[c].Deaths += Number(d.Deaths) || 0;
-          let recovered = d.Recovered;
-          if (recovered === undefined && d.Recorvered !== undefined) recovered = d.Recorvered;
-          countryMap[c].Recovered += Number(recovered) || 0;
-        });
-        setLatestDataByCountry(Object.values(countryMap));
-      })
-      .catch(() => setError("Failed to load data for selected date."))
-      .finally(() => setLoading(false));
-  }, [selectedDate]);
+    if (!selectedDate || !allData.length) return;
+    const records = allData.filter((d) => d.Date.startsWith(selectedDate));
+    const countryMap = {};
+    records.forEach((d) => {
+      const c = d.CountryRegion;
+      if (!countryMap[c]) {
+        countryMap[c] = { CountryRegion: c, Confirmed: 0, Deaths: 0, Recovered: 0 };
+      }
+      countryMap[c].Confirmed += Number(d.Confirmed) || 0;
+      countryMap[c].Deaths += Number(d.Deaths) || 0;
+      let recovered = d.Recovered;
+      if (recovered === undefined && d.Recorvered !== undefined) recovered = d.Recorvered;
+      countryMap[c].Recovered += Number(recovered) || 0;
+    });
+    setLatestDataByCountry(Object.values(countryMap));
+  }, [selectedDate, allData]);
 
   // Global stats
   const totals = latestDataByCountry.reduce(
@@ -253,8 +284,8 @@ function App() {
           <h1 className="text-4xl md:text-5xl font-bold text-white">COVID-19 Global Dashboard</h1>
         </header>
 
-        {/* Date Picker */}
-        <div className="flex flex-col items-center gap-2 mt-2">
+        {/* Date Picker & Progress Bar */}
+        <div className="flex flex-col items-center gap-2 mt-2 w-full">
           <p id="data-date" className="text-lg text-gray-400">
             {loading ? "Loading latest data..." : error ? error : selectedDate ? `Showing data for ${new Date(selectedDate).toLocaleDateString()}` : "No data available"}
           </p>
@@ -266,6 +297,16 @@ function App() {
                 </option>
               ))}
             </select>
+          )}
+          {loading && totalCount && (
+            <div className="w-full max-w-md mt-2">
+              <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-3 bg-blue-500 transition-all duration-300" style={{ width: `${progress}%` }}></div>
+              </div>
+              <div className="text-xs text-gray-400 mt-1 text-center">
+                {fetchedCount} / {totalCount} records loaded ({progress}%)
+              </div>
+            </div>
           )}
         </div>
 
