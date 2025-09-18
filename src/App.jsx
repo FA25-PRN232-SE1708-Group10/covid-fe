@@ -398,7 +398,7 @@ function App() {
           className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded shadow-lg transition-all duration-200"
           title="Delete cached data and refetch"
         >
-          Clear Cache &amp; Refetch
+          Clear Cached Data
         </button>
       </div>
       <div className="container mx-auto p-4 md:p-8">
