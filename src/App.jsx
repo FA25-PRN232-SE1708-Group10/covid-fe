@@ -194,9 +194,11 @@ function App() {
       }
       countryMap[c].Confirmed += Number(d.Confirmed) || 0;
       countryMap[c].Deaths += Number(d.Deaths) || 0;
-      let recovered = d.Recovered;
-      // removed typo check for 'Recorvered'
-      countryMap[c].Recovered += Number(recovered) || 0;
+      countryMap[c].Recovered += Number(d.Recovered) || 0;
+    });
+    // After building countryMap, add Active to each country
+    Object.values(countryMap).forEach((country) => {
+      country.Active = country.Confirmed - country.Deaths;
     });
     setLatestDataByCountry(Object.values(countryMap));
   }, [selectedDate, allData]);
@@ -207,13 +209,14 @@ function App() {
       acc.Confirmed += country.Confirmed;
       acc.Deaths += country.Deaths;
       acc.Recovered += country.Recovered || 0;
+      acc.Active += country.Confirmed - country.Deaths;
       return acc;
     },
-    { Confirmed: 0, Deaths: 0, Recovered: 0 }
+    { Confirmed: 0, Deaths: 0, Recovered: 0, Active: 0 }
   );
 
   // Calculate previous day's totals for daily increase
-  let prevTotals = { Confirmed: 0, Deaths: 0, Recovered: 0 };
+  let prevTotals = { Confirmed: 0, Deaths: 0, Recovered: 0, Active: 0 };
   if (selectedDate && allData.length) {
     // Find previous date
     const prevDateIdx = availableDates.indexOf(selectedDate) - 1;
@@ -235,9 +238,10 @@ function App() {
           acc.Confirmed += country.Confirmed;
           acc.Deaths += country.Deaths;
           acc.Recovered += country.Recovered || 0;
+          acc.Active += country.Confirmed - country.Deaths;
           return acc;
         },
-        { Confirmed: 0, Deaths: 0, Recovered: 0 }
+        { Confirmed: 0, Deaths: 0, Recovered: 0, Active: 0 }
       );
     }
   }
@@ -245,6 +249,7 @@ function App() {
     Confirmed: totals.Confirmed - prevTotals.Confirmed,
     Deaths: totals.Deaths - prevTotals.Deaths,
     Recovered: totals.Recovered - prevTotals.Recovered,
+    Active: totals.Active - prevTotals.Active,
   };
 
   // Highcharts options
@@ -268,6 +273,7 @@ function App() {
     Confirmed: ["#aed6f1", "#3498db", "#21618c"],
     Deaths: ["#f5b7b1", "#e74c3c", "#922b21"],
     Recovered: ["#a9dfbf", "#2ecc71", "#196f3d"],
+    Active: ["#fff9c4", "#ffe066", "#ffd600"], // yellow
   };
 
   const mapOptions = {
@@ -322,8 +328,16 @@ function App() {
     .map((d) => {
       const value = d[currentMetric];
       const percent = totalForMetric > 0 ? (value / totalForMetric) * 100 : 0;
-      const prev = prevCountryMap[d.CountryRegion]?.[currentMetric] || 0;
-      const dailyInc = value - prev;
+      let dailyInc;
+      if (currentMetric === "Active") {
+        const prevConfirmed = prevCountryMap[d.CountryRegion]?.Confirmed || 0;
+        const prevDeaths = prevCountryMap[d.CountryRegion]?.Deaths || 0;
+        const prevActive = prevConfirmed - prevDeaths;
+        dailyInc = d.Confirmed - d.Deaths - prevActive;
+      } else {
+        const prev = prevCountryMap[d.CountryRegion]?.[currentMetric] || 0;
+        dailyInc = value - prev;
+      }
       return {
         name: d.CountryRegion,
         value,
@@ -337,6 +351,7 @@ function App() {
     Confirmed: ["#3498db"],
     Deaths: ["#e74c3c"],
     Recovered: ["#2ecc71"],
+    Active: ["#ffd600"],
   };
 
   const treeMapOptions = {
@@ -468,6 +483,12 @@ function App() {
             <p id="total-recovered">{totals.Recovered.toLocaleString()}</p>
             <span className="daily-increase recovered">+{dailyIncrease.Recovered.toLocaleString()} today</span>
           </div>
+          {/* Active */}
+          <div className="stat-card active">
+            <h2>Total Active</h2>
+            <p id="total-active">{totals.Active.toLocaleString()}</p>
+            <span className="daily-increase active">+{dailyIncrease.Active.toLocaleString()} today</span>
+          </div>
         </div>
 
         {/* Chart Controls */}
@@ -492,6 +513,13 @@ function App() {
             onClick={() => setCurrentMetric("Recovered")}
           >
             Recovered
+          </button>
+          <button
+            id="btn-active"
+            className={`metric-btn flex-1 py-2 px-4 rounded-md font-semibold transition-all duration-300 ${currentMetric === "Active" ? "bg-yellow-400 text-white" : "text-gray-300"}`}
+            onClick={() => setCurrentMetric("Active")}
+          >
+            Active
           </button>
         </div>
 

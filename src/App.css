@@ -19,6 +19,10 @@
   background: #22c55e;
   color: #fff;
 }
+.metric-btn.bg-yellow-400 {
+  background: #ffd600;
+  color: #fff;
+}
 .metric-btn:hover:not(.bg-blue-500):not(.bg-red-500):not(.bg-green-500) {
   background: #374151;
   color: #fff;
@@ -40,8 +44,8 @@
 .stat-cards {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
-  gap: 15rem;
+  flex-wrap: wrap;
+  gap: 10rem;
   margin-bottom: 2rem;
   justify-content: center;
   align-items: center;
@@ -53,7 +57,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
   text-align: center;
   border: 2px solid #374151;
-  min-width: 160px;
+  min-width: 200px;
   padding: 1.25rem 2rem;
   box-sizing: border-box;
   background: #111827;
@@ -72,6 +76,9 @@
 }
 .stat-card.recovered h2 {
   color: #22c55e;
+}
+.stat-card.active h2 {
+  color: #ffd600;
 }
 .stat-card p {
   font-size: 1.5rem;
@@ -93,6 +100,9 @@
 }
 .daily-increase.recovered {
   color: #6ee7b7;
+}
+.daily-increase.active {
+  color: #ffe066;
 }
 #root {
   max-width: 1280px;
