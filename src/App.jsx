@@ -195,7 +195,7 @@ function App() {
       countryMap[c].Confirmed += Number(d.Confirmed) || 0;
       countryMap[c].Deaths += Number(d.Deaths) || 0;
       let recovered = d.Recovered;
-      if (recovered === undefined && d.Recorvered !== undefined) recovered = d.Recorvered;
+      // removed typo check for 'Recorvered'
       countryMap[c].Recovered += Number(recovered) || 0;
     });
     setLatestDataByCountry(Object.values(countryMap));
@@ -228,9 +228,7 @@ function App() {
         }
         prevCountryMap[c].Confirmed += Number(d.Confirmed) || 0;
         prevCountryMap[c].Deaths += Number(d.Deaths) || 0;
-        let recovered = d.Recovered;
-        if (recovered === undefined && d.Recorvered !== undefined) recovered = d.Recorvered;
-        prevCountryMap[c].Recovered += Number(recovered) || 0;
+        prevCountryMap[c].Recovered += Number(d.Recovered) || 0;
       });
       prevTotals = Object.values(prevCountryMap).reduce(
         (acc, country) => {
@@ -300,16 +298,38 @@ function App() {
   };
 
   const totalForMetric = latestDataByCountry.reduce((sum, d) => sum + (d[currentMetric] || 0), 0);
+  // Calculate per-country daily increase for treemap
+  let prevCountryMap = {};
+  if (selectedDate && allData.length) {
+    const prevDateIdx = availableDates.indexOf(selectedDate) - 1;
+    if (prevDateIdx >= 0) {
+      const prevDate = availableDates[prevDateIdx];
+      const prevRecords = allData.filter((d) => d.Date.startsWith(prevDate));
+      prevRecords.forEach((d) => {
+        const c = d.CountryRegion;
+        if (!prevCountryMap[c]) {
+          prevCountryMap[c] = { Confirmed: 0, Deaths: 0, Recovered: 0 };
+        }
+        prevCountryMap[c].Confirmed += Number(d.Confirmed) || 0;
+        prevCountryMap[c].Deaths += Number(d.Deaths) || 0;
+        prevCountryMap[c].Recovered += Number(d.Recovered) || 0;
+      });
+    }
+  }
+
   const treeMapData = latestDataByCountry
     .filter((d) => d[currentMetric] > 0)
     .map((d) => {
       const value = d[currentMetric];
       const percent = totalForMetric > 0 ? (value / totalForMetric) * 100 : 0;
+      const prev = prevCountryMap[d.CountryRegion]?.[currentMetric] || 0;
+      const dailyInc = value - prev;
       return {
         name: d.CountryRegion,
         value,
         colorValue: value,
         percent,
+        dailyIncrease: dailyInc,
       };
     });
 
@@ -352,7 +372,14 @@ function App() {
     ],
     title: { text: `Countries by ${currentMetric} Cases` },
     tooltip: {
-      pointFormat: "<b>{point.name}</b>: {point.value:,.0f} ({point.percent:.2f}%)",
+      useHTML: true,
+      pointFormatter: function () {
+        const dailyInc = this.dailyIncrease !== undefined ? this.dailyIncrease : 0;
+        const dailyIncColor = this.series.name === "Deaths" ? "#ef4444" : this.series.name === "Recovered" ? "#22c55e" : "#3b82f6";
+        return (
+          `<b>${this.name}</b>: ${this.value.toLocaleString()} (${this.percent.toFixed(2)}%)<br>` + `<span style="color:${dailyIncColor};font-weight:bold;">+${dailyInc.toLocaleString()} today</span>`
+        );
+      },
     },
   };
 

@@ -1,3 +1,32 @@
+/* Metric buttons for data type switching */
+.metric-btn {
+  margin: 0 0.25rem;
+  background: #23272f;
+  color: #cbd5e1;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  margin-bottom: 0.5rem;
+}
+.metric-btn.bg-blue-500 {
+  background: #3b82f6;
+  color: #fff;
+}
+.metric-btn.bg-red-500 {
+  background: #ef4444;
+  color: #fff;
+}
+.metric-btn.bg-green-500 {
+  background: #22c55e;
+  color: #fff;
+}
+.metric-btn:hover:not(.bg-blue-500):not(.bg-red-500):not(.bg-green-500) {
+  background: #374151;
+  color: #fff;
+}
+.metric-btn:focus {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
 /* Date row for date picker and label */
 .date-row {
   display: flex;
