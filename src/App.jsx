@@ -212,6 +212,43 @@ function App() {
     { Confirmed: 0, Deaths: 0, Recovered: 0 }
   );
 
+  // Calculate previous day's totals for daily increase
+  let prevTotals = { Confirmed: 0, Deaths: 0, Recovered: 0 };
+  if (selectedDate && allData.length) {
+    // Find previous date
+    const prevDateIdx = availableDates.indexOf(selectedDate) - 1;
+    if (prevDateIdx >= 0) {
+      const prevDate = availableDates[prevDateIdx];
+      const prevRecords = allData.filter((d) => d.Date.startsWith(prevDate));
+      const prevCountryMap = {};
+      prevRecords.forEach((d) => {
+        const c = d.CountryRegion;
+        if (!prevCountryMap[c]) {
+          prevCountryMap[c] = { CountryRegion: c, Confirmed: 0, Deaths: 0, Recovered: 0 };
+        }
+        prevCountryMap[c].Confirmed += Number(d.Confirmed) || 0;
+        prevCountryMap[c].Deaths += Number(d.Deaths) || 0;
+        let recovered = d.Recovered;
+        if (recovered === undefined && d.Recorvered !== undefined) recovered = d.Recorvered;
+        prevCountryMap[c].Recovered += Number(recovered) || 0;
+      });
+      prevTotals = Object.values(prevCountryMap).reduce(
+        (acc, country) => {
+          acc.Confirmed += country.Confirmed;
+          acc.Deaths += country.Deaths;
+          acc.Recovered += country.Recovered || 0;
+          return acc;
+        },
+        { Confirmed: 0, Deaths: 0, Recovered: 0 }
+      );
+    }
+  }
+  const dailyIncrease = {
+    Confirmed: totals.Confirmed - prevTotals.Confirmed,
+    Deaths: totals.Deaths - prevTotals.Deaths,
+    Recovered: totals.Recovered - prevTotals.Recovered,
+  };
+
   // Highcharts options
   const mapData = latestDataByCountry
     .map((d) => {
@@ -390,16 +427,19 @@ function App() {
           <div className="stat-card confirmed">
             <h2>Total Confirmed</h2>
             <p id="total-confirmed">{totals.Confirmed.toLocaleString()}</p>
+            <span className="daily-increase confirmed">+{dailyIncrease.Confirmed.toLocaleString()} today</span>
           </div>
           {/* Deaths */}
           <div className="stat-card deaths">
             <h2>Total Deaths</h2>
             <p id="total-deaths">{totals.Deaths.toLocaleString()}</p>
+            <span className="daily-increase deaths">+{dailyIncrease.Deaths.toLocaleString()} today</span>
           </div>
           {/* Recovered */}
           <div className="stat-card recovered">
             <h2>Total Recovered</h2>
             <p id="total-recovered">{totals.Recovered.toLocaleString()}</p>
+            <span className="daily-increase recovered">+{dailyIncrease.Recovered.toLocaleString()} today</span>
           </div>
         </div>
 
