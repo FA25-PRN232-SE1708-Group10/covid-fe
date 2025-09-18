@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { clearCachedData, getCachedData, setCachedData } from "./utils/cache";
 
-const API_BASE_URL = "https://localhost:7164"; // Update to your backend's URL
+const API_BASE_URL = "https://localhost:7164";
 
 const countryNameMap = {
   US: "us",
@@ -75,7 +75,6 @@ function normalizeCountryName(name) {
 }
 
 function App() {
-  // ...existing code...
   // For triggering a refetch after cache clear
   const [cacheResetFlag, setCacheResetFlag] = useState(0);
   const [allData, setAllData] = useState([]);
@@ -263,13 +262,19 @@ function App() {
     ],
   };
 
+  const totalForMetric = latestDataByCountry.reduce((sum, d) => sum + (d[currentMetric] || 0), 0);
   const treeMapData = latestDataByCountry
     .filter((d) => d[currentMetric] > 0)
-    .map((d) => ({
-      name: d.CountryRegion,
-      value: d[currentMetric],
-      colorValue: d[currentMetric],
-    }));
+    .map((d) => {
+      const value = d[currentMetric];
+      const percent = totalForMetric > 0 ? (value / totalForMetric) * 100 : 0;
+      return {
+        name: d.CountryRegion,
+        value,
+        colorValue: value,
+        percent,
+      };
+    });
 
   const colors = {
     Confirmed: ["#3498db"],
@@ -289,11 +294,28 @@ function App() {
         layoutAlgorithm: "squarified",
         data: treeMapData,
         name: currentMetric,
+        dataLabels: {
+          enabled: true,
+          style: {
+            textOverflow: "clip",
+            fontSize: "10px",
+            fontWeight: "bold",
+            color: "#000",
+          },
+          crop: false,
+          overflow: "allow",
+          allowOverlap: false,
+          formatter: function () {
+            // Only show name if box is big enough, else blank
+            if (this.point.node && this.point.node.val && this.point.node.val < 0.01) return "";
+            return this.point.name;
+          },
+        },
       },
     ],
     title: { text: `Countries by ${currentMetric} Cases` },
     tooltip: {
-      pointFormat: "<b>{point.name}</b>: {point.value:,.0f}",
+      pointFormat: "<b>{point.name}</b>: {point.value:,.0f} ({point.percent:.2f}%)",
     },
   };
 
