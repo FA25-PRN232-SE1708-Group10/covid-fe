@@ -4,7 +4,7 @@ import "highcharts/modules/map";
 import "highcharts/modules/treemap";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { getCachedData, setCachedData } from "./utils/cache";
+import { clearCachedData, getCachedData, setCachedData } from "./utils/cache";
 
 const API_BASE_URL = "https://localhost:7164"; // Update to your backend's URL
 
@@ -75,6 +75,9 @@ function normalizeCountryName(name) {
 }
 
 function App() {
+  // ...existing code...
+  // For triggering a refetch after cache clear
+  const [cacheResetFlag, setCacheResetFlag] = useState(0);
   const [allData, setAllData] = useState([]);
   const [availableDates, setAvailableDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
@@ -173,10 +176,12 @@ function App() {
       }
     }
     fetchAllData();
+
+    // cacheResetFlag is a dependency to allow refetching after cache clear
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [cacheResetFlag]);
 
   // Update dashboard for selected date
   useEffect(() => {
@@ -292,8 +297,24 @@ function App() {
     },
   };
 
+  // Handler for clearing cache and refetching
+  const handleClearCache = async () => {
+    await clearCachedData("covid-data-v1");
+    setCacheResetFlag((f) => f + 1);
+  };
+
   return (
     <div className="bg-gray-900 text-gray-200 min-h-screen">
+      {/* Top right cache clear button */}
+      <div className="fixed top-4 right-4 z-50">
+        <button
+          onClick={handleClearCache}
+          className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded shadow-lg transition-all duration-200"
+          title="Delete cached data and refetch"
+        >
+          Clear Cache &amp; Refetch
+        </button>
+      </div>
       <div className="container mx-auto p-4 md:p-8">
         {/* Header */}
         <header className="text-center mb-8">
@@ -302,23 +323,28 @@ function App() {
 
         {/* Date Picker & Progress Bar */}
         <div className="flex flex-col items-center gap-2 mt-2 w-full">
-          <p id="data-date" className="text-lg text-gray-400">
-            {loading ? "Loading latest data..." : error ? error : selectedDate ? `Showing data for ${new Date(selectedDate).toLocaleDateString()}` : "No data available"}
-          </p>
-          {availableDates.length > 0 && (
-            <input
-              id="date-picker"
-              type="date"
-              className="bg-gray-700 text-gray-200 rounded px-2 py-1"
-              value={selectedDate}
-              min={availableDates[0]}
-              max={availableDates[availableDates.length - 1]}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              style={{ display: "inline-block" }}
-              list="available-dates"
-            />
+          {loading || error || !selectedDate ? (
+            <p id="data-date" className="text-lg text-gray-400 m-0">
+              {loading ? "Loading latest data..." : error ? error : "No data available"}
+            </p>
+          ) : (
+            <div className="date-row">
+              <span id="data-date" className="text-lg text-gray-400 m-0">
+                Showing data for
+              </span>
+              <input
+                id="date-picker"
+                type="date"
+                className="bg-gray-700 text-gray-200 rounded px-2 py-1"
+                value={selectedDate}
+                min={availableDates[0]}
+                max={availableDates[availableDates.length - 1]}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                style={{ display: "inline-block" }}
+                list="available-dates"
+              />
+            </div>
           )}
-          {/* Optionally, provide a datalist for browser autocomplete of available dates */}
           <datalist id="available-dates">
             {availableDates.map((date) => (
               <option key={date} value={date} />
@@ -337,27 +363,21 @@ function App() {
         </div>
 
         {/* Global Stats Cards */}
-        <div id="stats-cards" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 mb-8">
+        <div id="stats-cards" className="stat-cards">
           {/* Confirmed */}
-          <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-            <h2 className="text-xl text-blue-400 font-semibold">Total Confirmed</h2>
-            <p id="total-confirmed" className="text-4xl font-bold text-white mt-2">
-              {totals.Confirmed.toLocaleString()}
-            </p>
+          <div className="stat-card confirmed">
+            <h2>Total Confirmed</h2>
+            <p id="total-confirmed">{totals.Confirmed.toLocaleString()}</p>
           </div>
           {/* Deaths */}
-          <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-            <h2 className="text-xl text-red-400 font-semibold">Total Deaths</h2>
-            <p id="total-deaths" className="text-4xl font-bold text-white mt-2">
-              {totals.Deaths.toLocaleString()}
-            </p>
+          <div className="stat-card deaths">
+            <h2>Total Deaths</h2>
+            <p id="total-deaths">{totals.Deaths.toLocaleString()}</p>
           </div>
           {/* Recovered */}
-          <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-            <h2 className="text-xl text-green-400 font-semibold">Total Recovered</h2>
-            <p id="total-recovered" className="text-4xl font-bold text-white mt-2">
-              {totals.Recovered.toLocaleString()}
-            </p>
+          <div className="stat-card recovered">
+            <h2>Total Recovered</h2>
+            <p id="total-recovered">{totals.Recovered.toLocaleString()}</p>
           </div>
         </div>
 
