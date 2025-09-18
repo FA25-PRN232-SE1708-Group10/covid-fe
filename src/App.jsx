@@ -4,6 +4,7 @@ import "highcharts/modules/map";
 import "highcharts/modules/treemap";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import { getCachedData, setCachedData } from "./utils/cache";
 
 const API_BASE_URL = "https://localhost:7164"; // Update to your backend's URL
 
@@ -107,6 +108,19 @@ function App() {
       let all = [];
       const uniqueMap = new Map();
       try {
+        // Try to get cached data first
+        const cached = await getCachedData("covid-data-v1");
+        if (cached && Array.isArray(cached.data) && cached.data.length > 0) {
+          all = cached.data;
+          setAllData(all);
+          setAvailableDates(cached.dates);
+          setSelectedDate(cached.dates[cached.dates.length - 1] || "");
+          setProgress(100);
+          setFetchedCount(all.length);
+          setTotalCount(all.length);
+          setLoading(false);
+          return;
+        }
         // Get total count for progress
         const countRes = await fetch(`${API_BASE_URL}/odata/CovidData/$count`);
         if (!countRes.ok) throw new Error("Failed to fetch total count");
@@ -150,6 +164,8 @@ function App() {
         ).sort((a, b) => a.localeCompare(b));
         setAvailableDates(dates);
         setSelectedDate(dates[dates.length - 1] || "");
+        // Cache the data for future loads
+        await setCachedData("covid-data-v1", { data: all, dates });
       } catch {
         if (!isCancelled) setError("Failed to load data. Is the backend running?");
       } finally {
