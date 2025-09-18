@@ -2,13 +2,10 @@ import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 import "highcharts/modules/map";
 import "highcharts/modules/treemap";
-import * as idbKeyval from "idb-keyval";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 
 const API_BASE_URL = "https://localhost:7164"; // Update to your backend's URL
-const CACHE_KEY = "covidDataCache";
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 const countryNameMap = {
   US: "us",
@@ -77,7 +74,6 @@ function normalizeCountryName(name) {
 }
 
 function App() {
-  const [allData, setAllData] = useState([]);
   const [availableDates, setAvailableDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [latestDataByCountry, setLatestDataByCountry] = useState([]);
@@ -94,81 +90,65 @@ function App() {
       .catch(() => setWorldMapGeoData(null));
   }, []);
 
-  // Fetch COVID data (with cache)
+  // Fetch available dates only (distinct dates from backend)
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      setError("");
-      try {
-        const cached = await idbKeyval.get(CACHE_KEY);
-        if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-          setAllData(cached.data);
-          setupDatesAndDashboard(cached.data);
-          setLoading(false);
-          return;
-        }
-        let all = [];
-        let url = `${API_BASE_URL}/odata/CovidData`;
-        while (url) {
-          const response = await fetch(url, {
-            headers: { accept: "application/json;odata.metadata=minimal;odata.streaming=true" },
-          });
-          if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-          const result = await response.json();
-          if (Array.isArray(result.value)) {
-            all = all.concat(result.value);
+    setLoading(true);
+    setError("");
+    fetch(`${API_BASE_URL}/odata/CovidData?$apply=groupby((Date))`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch available dates");
+        return res.json();
+      })
+      .then((data) => {
+        // OData groupby returns array of objects with Date property
+        const dates = Array.from(
+          new Set(
+            (data.value || []).map((d) => {
+              const dateObj = new Date(d.Date);
+              const yyyy = dateObj.getFullYear();
+              const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+              const dd = String(dateObj.getDate()).padStart(2, "0");
+              return `${yyyy}-${mm}-${dd}`;
+            })
+          )
+        ).sort((a, b) => a.localeCompare(b));
+        setAvailableDates(dates);
+        setSelectedDate(dates[dates.length - 1] || "");
+      })
+      .catch(() => setError("Failed to load available dates."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Fetch COVID data for the selected date only
+  useEffect(() => {
+    if (!selectedDate) return;
+    setLoading(true);
+    setError("");
+    const filter = `Date eq ${selectedDate}`;
+    fetch(`${API_BASE_URL}/odata/CovidData?$filter=${encodeURIComponent(filter)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch data for selected date");
+        return res.json();
+      })
+      .then((data) => {
+        const records = data.value || [];
+        const countryMap = {};
+        records.forEach((d) => {
+          const c = d.CountryRegion;
+          if (!countryMap[c]) {
+            countryMap[c] = { CountryRegion: c, Confirmed: 0, Deaths: 0, Recovered: 0 };
           }
-          url = result["@odata.nextLink"] || result["odata.nextLink"] || null;
-        }
-        if (!Array.isArray(all) || all.length === 0) throw new Error("No data returned from API");
-        await idbKeyval.set(CACHE_KEY, { data: all, timestamp: Date.now() });
-        setAllData(all);
-        setupDatesAndDashboard(all);
-      } catch {
-        setError("Failed to load data. Is the backend running?");
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-    // eslint-disable-next-line
-  }, []);
-
-  // Setup available dates and dashboard
-  const setupDatesAndDashboard = useCallback((data) => {
-    const dates = Array.from(
-      new Set(
-        data.map((d) => {
-          const dateObj = new Date(d.Date);
-          const yyyy = dateObj.getFullYear();
-          const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-          const dd = String(dateObj.getDate()).padStart(2, "0");
-          return `${yyyy}-${mm}-${dd}`;
-        })
-      )
-    ).sort((a, b) => a.localeCompare(b));
-    setAvailableDates(dates);
-    setSelectedDate(dates[dates.length - 1] || "");
-  }, []);
-
-  // Update dashboard for selected date
-  useEffect(() => {
-    if (!selectedDate || !allData.length) return;
-    const records = allData.filter((d) => d.Date.startsWith(selectedDate));
-    const countryMap = {};
-    records.forEach((d) => {
-      const c = d.CountryRegion;
-      if (!countryMap[c]) {
-        countryMap[c] = { CountryRegion: c, Confirmed: 0, Deaths: 0, Recovered: 0 };
-      }
-      countryMap[c].Confirmed += Number(d.Confirmed) || 0;
-      countryMap[c].Deaths += Number(d.Deaths) || 0;
-      let recovered = d.Recovered;
-      if (recovered === undefined && d.Recorvered !== undefined) recovered = d.Recorvered;
-      countryMap[c].Recovered += Number(recovered) || 0;
-    });
-    setLatestDataByCountry(Object.values(countryMap));
-  }, [selectedDate, allData]);
+          countryMap[c].Confirmed += Number(d.Confirmed) || 0;
+          countryMap[c].Deaths += Number(d.Deaths) || 0;
+          let recovered = d.Recovered;
+          if (recovered === undefined && d.Recorvered !== undefined) recovered = d.Recorvered;
+          countryMap[c].Recovered += Number(recovered) || 0;
+        });
+        setLatestDataByCountry(Object.values(countryMap));
+      })
+      .catch(() => setError("Failed to load data for selected date."))
+      .finally(() => setLoading(false));
+  }, [selectedDate]);
 
   // Global stats
   const totals = latestDataByCountry.reduce(
